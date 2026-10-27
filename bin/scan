@@ -1,0 +1,108 @@
+#!/bin/sh
+# scan: one flatbed scan from a SANE pixma device, saved with a timestamp.
+#
+#   scan                      # 300 dpi color JPEG into $SCAN_DIR
+#   scan -r 600 -m Gray       # resolution and mode
+#   scan -f png -o ~/Desktop  # format and output folder
+#   scan -d pixma:XXXXXXXX_YYYY   # pick a device instead of auto-detect
+#   scan --list               # show detected devices
+#
+# Environment: SANE_PREFIX (default $HOME/sane), SCAN_DIR (default
+# $HOME/Documents/Scans), SCANIMAGE (path to scanimage, for testing).
+set -eu
+
+SANE_PREFIX="${SANE_PREFIX:-$HOME/sane}"
+SCAN_DIR="${SCAN_DIR:-$HOME/Documents/Scans}"
+SCANIMAGE="${SCANIMAGE:-$SANE_PREFIX/bin/scanimage}"
+RESOLUTION=300
+MODE=Color
+FORMAT=jpeg
+DEVICE=""
+LIST=0
+
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+die() { printf 'scan: %s\n' "$1" >&2; exit "${2:-1}"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -r|--resolution) [ $# -ge 2 ] || die "missing value for $1" 2; RESOLUTION="$2"; shift 2 ;;
+    -m|--mode) [ $# -ge 2 ] || die "missing value for $1" 2; MODE="$2"; shift 2 ;;
+    -f|--format) [ $# -ge 2 ] || die "missing value for $1" 2; FORMAT="$2"; shift 2 ;;
+    -o|--output-dir) [ $# -ge 2 ] || die "missing value for $1" 2; SCAN_DIR="$2"; shift 2 ;;
+    -d|--device) [ $# -ge 2 ] || die "missing value for $1" 2; DEVICE="$2"; shift 2 ;;
+    -l|--list) LIST=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option: $1 (try --help)" 2 ;;
+  esac
+done
+
+case "$RESOLUTION" in
+  ''|*[!0-9]*) die "resolution must be a whole number of dpi, such as 150, 300 or 600" 2 ;;
+esac
+[ "$RESOLUTION" -ge 50 ] && [ "$RESOLUTION" -le 4800 ] || die "resolution must be between 50 and 4800 dpi" 2
+case "$MODE" in
+  Color|Gray|Lineart) ;;
+  color) MODE=Color ;; gray|grey|Grey) MODE=Gray ;; lineart) MODE=Lineart ;;
+  *) die "mode must be Color, Gray or Lineart" 2 ;;
+esac
+case "$FORMAT" in
+  jpeg|jpg) FORMAT=jpeg; EXT=jpg ;;
+  png) EXT=png ;;
+  tiff|tif) FORMAT=tiff; EXT=tif ;;
+  pnm) EXT=pnm ;;
+  *) die "format must be jpeg, png, tiff or pnm" 2 ;;
+esac
+
+[ -x "$SCANIMAGE" ] || die "scanimage not found at $SCANIMAGE. Run build.sh first, or set SANE_PREFIX."
+
+run_scanimage() {
+  DYLD_LIBRARY_PATH="$SANE_PREFIX/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
+  SANE_CONFIG_DIR="${SANE_CONFIG_DIR:-$SANE_PREFIX/etc/sane.d}" \
+    "$SCANIMAGE" "$@"
+}
+
+# scanimage -L prints lines like: device `pixma:XXXXXXXX_YYYY' is a CANON ...
+list_pixma() {
+  run_scanimage -L 2>/dev/null | sed -n "s/^device \`\(pixma:[^']*\)'.*/\1/p"
+}
+
+if [ "$LIST" -eq 1 ]; then
+  out="$(run_scanimage -L 2>&1 || true)"
+  printf '%s\n' "$out"
+  exit 0
+fi
+
+if [ -z "$DEVICE" ]; then
+  devices="$(list_pixma || true)"
+  count="$(printf '%s' "$devices" | grep -c . || true)"
+  if [ "$count" -eq 0 ]; then
+    die "no pixma scanner found. Check the USB cable and power, then try again. Run 'scan --list' to see what SANE detects." 3
+  elif [ "$count" -gt 1 ]; then
+    printf 'scan: more than one pixma device found; pick one with -d:\n%s\n' "$devices" >&2
+    exit 2
+  fi
+  DEVICE="$devices"
+fi
+
+mkdir -p "$SCAN_DIR"
+stamp="$(date +%Y-%m-%d_%H%M%S)"
+out="$SCAN_DIR/scan-$stamp.$EXT"
+n=1
+while [ -e "$out" ]; do out="$SCAN_DIR/scan-$stamp-$n.$EXT"; n=$((n + 1)); done
+tmp="$out.part"
+err="$(mktemp "${TMPDIR:-/tmp}/scan-err.XXXXXX")"
+trap 'rm -f "$tmp" "$err"' EXIT
+trap 'exit 130' INT TERM
+
+if ! run_scanimage -d "$DEVICE" --format="$FORMAT" --resolution "$RESOLUTION" --mode "$MODE" >"$tmp" 2>"$err"; then
+  msg="$(tail -3 "$err")"
+  printf 'scan: the scan failed: %s\n' "${msg:-scanimage exited with an error}" >&2
+  printf 'scan: if this is an imageCLASS multifunction, put it in scan mode from its front panel first (for example SCAN, then Remote Scanner, then OK), then run scan again.\n' >&2
+  exit 4
+fi
+if [ ! -s "$tmp" ]; then
+  printf 'scan: scanimage returned no image data. Is the device in scan mode?\n' >&2
+  exit 4
+fi
+mv "$tmp" "$out"
+printf '%s\n' "$out"

@@ -1,0 +1,52 @@
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck build.sh bin/scan tests/run.sh tests/fake-scanimage
+      - name: Wrapper tests (fake scanimage, no scanner)
+        run: sh tests/run.sh
+
+  macos-build:
+    # Builds sane-backends once on a macOS runner. Only on main or by hand,
+    # to keep macOS minutes small.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: lint-and-test
+    runs-on: macos-latest
+    timeout-minutes: 25
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Paths
+        run: |
+          echo "PREFIX=$RUNNER_TEMP/sane" >> "$GITHUB_ENV"
+          echo "WORKDIR=$RUNNER_TEMP/sane-build" >> "$GITHUB_ENV"
+      - name: Build (pixma only, pthread)
+        run: ./build.sh
+      - name: Second run is a no-op
+        run: ./build.sh | tee second-run.txt && grep -q "already installed" second-run.txt
+      - name: Check the build
+        run: |
+          set -eu
+          grep -q '^#define USE_PTHREAD' "$WORKDIR/sane-backends-1.4.0/include/sane/config.h"
+          ls "$PREFIX"/lib/sane/libsane-pixma*
+          grep -qx pixma "$PREFIX/etc/sane.d/dll.conf"
+          DYLD_LIBRARY_PATH="$PREFIX/lib" SANE_CONFIG_DIR="$PREFIX/etc/sane.d" "$PREFIX/bin/scanimage" --version
+          DYLD_LIBRARY_PATH="$PREFIX/lib" SANE_CONFIG_DIR="$PREFIX/etc/sane.d" SANE_DEBUG_DLL=3 "$PREFIX/bin/scanimage" -L 2>dll.log || true
+          grep -i "pixma" dll.log
+      - name: Wrapper with no scanner attached exits 3
+        run: |
+          set +e
+          SANE_PREFIX="$PREFIX" SCAN_DIR="$RUNNER_TEMP/scans" bin/scan
+          rc=$?
+          test "$rc" -eq 3

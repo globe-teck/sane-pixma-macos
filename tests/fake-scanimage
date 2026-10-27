@@ -1,0 +1,27 @@
+#!/bin/sh
+# Stand-in for scanimage used by the tests. Behaviour is set with:
+#   FAKE_DEVICES  newline-separated device names to list (may be empty)
+#   FAKE_FAIL     1 = fail the scan like a device that isn't in scan mode
+#   FAKE_EMPTY    1 = exit 0 but write no data
+#   FAKE_LOG      file to append the arguments and environment to
+set -eu
+if [ -n "${FAKE_LOG:-}" ]; then
+  printf 'args:%s\n' "$*" >>"$FAKE_LOG"
+  printf 'env:DYLD_LIBRARY_PATH=%s SANE_CONFIG_DIR=%s\n' "${DYLD_LIBRARY_PATH:-}" "${SANE_CONFIG_DIR:-}" >>"$FAKE_LOG"
+fi
+if [ "${1:-}" = "-L" ]; then
+  if [ -z "${FAKE_DEVICES:-}" ]; then
+    printf '\nNo scanners were identified. If you were expecting something different,\ncheck that the scanner is plugged in, turned on and detected by the\nsane-find-scanner tool (if appropriate). Please read the documentation\nwhich came with this software (README, FAQ, manpages).\n'
+    exit 0
+  fi
+  printf '%s\n' "$FAKE_DEVICES" | while IFS= read -r d; do
+    [ -n "$d" ] && printf "device \`%s' is a CANON Canon imageCLASS EXAMPLE multi-function peripheral\n" "$d"
+  done
+  exit 0
+fi
+if [ "${FAKE_FAIL:-0}" = 1 ]; then
+  echo "scanimage: sane_start: Error during device I/O" >&2
+  exit 1
+fi
+[ "${FAKE_EMPTY:-0}" = 1 ] && exit 0
+printf 'FAKEIMAGEDATA'
