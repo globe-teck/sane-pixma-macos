@@ -39,7 +39,7 @@ done
 case "$RESOLUTION" in
   ''|*[!0-9]*) die "resolution must be a whole number of dpi, such as 150, 300 or 600" 2 ;;
 esac
-[ "$RESOLUTION" -ge 50 ] && [ "$RESOLUTION" -le 4800 ] || die "resolution must be between 50 and 4800 dpi" 2
+if [ "$RESOLUTION" -lt 50 ] || [ "$RESOLUTION" -gt 4800 ]; then die "resolution must be between 50 and 4800 dpi" 2; fi
 case "$MODE" in
   Color|Gray|Lineart) ;;
   color) MODE=Color ;; gray|grey|Grey) MODE=Gray ;; lineart) MODE=Lineart ;;
