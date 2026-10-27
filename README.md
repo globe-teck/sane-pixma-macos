@@ -1,7 +1,7 @@
 # sane-pixma-macos
 
 Scan from an older Canon USB multifunction on a current Mac with the
-open-source [SANE](http://www.sane-project.org/) `pixma` backend, built from
+open-source [SANE](https://sane-project.gitlab.io/website/) `pixma` backend, built from
 source into your home folder. No sudo, no kernel extensions, no Canon
 software.
 
@@ -40,7 +40,7 @@ it.
 - [Homebrew](https://brew.sh/), for `libusb`, `jpeg-turbo`, `libtiff`,
   `libpng` and `pkg-config` (or pass `--no-brew` if you provide them yourself)
 - A pixma-supported scanner connected by USB. Check the
-  [SANE supported devices list](http://www.sane-project.org/sane-mfgs.html#Z-CANON)
+  [SANE supported devices list](https://sane-project.gitlab.io/website/sane-mfgs.html#Z-CANON)
   for your model first.
 
 ## Build
@@ -156,7 +156,7 @@ silicon Mac. Other models and macOS versions are untested.
 
 ## Authorship
 
-Leigh Rodney, AI Researcher & Founder at Globe Teck (Python: basic). Built with
+Leigh Rodney, AI Researcher & Founder at Globe Teck (Shell: basic). Built with
 AI coding assistance. I defined the requirements, ran the tests, and reviewed
 the changes.
 
